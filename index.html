@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#08131f" />
+    <meta name="description" content="Tankpreis-Dashboard für Deutschland mit TankPuls-API, Karte, Preisverlauf, Favoriten und Export." />
+    <title>Tankboard · TankPuls Live</title>
+    <link rel="preconnect" href="https://api.tankpuls.de" />
+    <link rel="preconnect" href="https://nominatim.openstreetmap.org" />
+    <link rel="preconnect" href="https://tile.openstreetmap.org" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">TankPuls · MTS-K</div>
+          <h1>Tankboard</h1>
+          <p class="subline">Live-Preise, Preisverlauf und Kartenwahl im Stil einer Tankstellenanzeige.</p>
+        </div>
+        <div class="topbar-actions">
+          <button id="btnGeo" class="ghost-btn">Standort nutzen</button>
+          <button id="btnRefresh" class="ghost-btn">Aktualisieren</button>
+          <label class="switch">
+            <input id="autoRefresh" type="checkbox" checked />
+            <span>Auto-Refresh</span>
+          </label>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="hero-panel board-frame">
+          <div class="hero-head">
+            <div>
+              <span class="section-label">Deutschland-Dashboard</span>
+              <h2 id="locationTitle">Berlin · Mitte</h2>
+            </div>
+            <div class="status-pill" id="apiStatus">API wird geprüft…</div>
+          </div>
+
+          <div class="price-board">
+            <article class="board-card board-accent">
+              <div class="board-kicker">Referenz</div>
+              <div class="price-row">
+                <div class="price-label">Ø Deutschland</div>
+                <div class="price-value" id="germanyAvg">—</div>
+              </div>
+              <div class="muted" id="germanyHint">Basis: offizielle TankPuls-Region/Stationsdaten</div>
+            </article>
+            <article class="board-card">
+              <div class="board-kicker">Aktuelle Auswahl</div>
+              <div class="price-row">
+                <div class="price-label">Station</div>
+                <div class="price-value" id="selectedPrice">—</div>
+              </div>
+              <div class="muted" id="selectedMeta">Wähle eine Tankstelle auf der Karte oder in der Liste.</div>
+            </article>
+            <article class="board-card compact">
+              <div class="board-kicker">Region</div>
+              <div class="mini-metrics">
+                <div><strong id="regionMedian">—</strong><span>Median</span></div>
+                <div><strong id="regionSpread">—</strong><span>Spannweite</span></div>
+                <div><strong id="regionUpdated">—</strong><span>Aktualisiert</span></div>
+              </div>
+            </article>
+          </div>
+
+          <form id="searchForm" class="control-bar">
+            <label>
+              <span>Postleitzahl</span>
+              <input id="plzInput" inputmode="numeric" maxlength="5" placeholder="10559" />
+            </label>
+            <label>
+              <span>Kraftstoff</span>
+              <select id="fuelSelect">
+                <option value="E10">E10</option>
+                <option value="E5">E5</option>
+                <option value="Diesel">Diesel</option>
+              </select>
+            </label>
+            <label>
+              <span>Radius</span>
+              <input id="radiusInput" type="range" min="1" max="25" step="1" value="5" />
+              <output id="radiusOutput">5 km</output>
+            </label>
+            <label>
+              <span>Sortierung</span>
+              <select id="sortSelect">
+                <option value="price">Preis ↑</option>
+                <option value="distance">Entfernung</option>
+                <option value="brand">Marke</option>
+                <option value="updated">Aktualität</option>
+              </select>
+            </label>
+            <label class="inline-check">
+              <input id="openOnly" type="checkbox" />
+              <span>Nur offen</span>
+            </label>
+            <button class="primary-btn" type="submit">Suchen</button>
+          </form>
+
+          <div class="preset-row" id="presets"></div>
+          <div class="legend-row" id="legend"></div>
+        </section>
+
+        <section class="content-grid">
+          <div class="map-panel board-frame">
+            <div class="panel-head">
+              <div>
+                <span class="section-label">Karte</span>
+                <h3>Stationen auswählen</h3>
+              </div>
+              <div class="panel-actions">
+                <button id="btnSortByPrice" class="chip-btn active" type="button">Preis</button>
+                <button id="btnSortByDistance" class="chip-btn" type="button">Distanz</button>
+                <button id="btnFavoritesOnly" class="chip-btn" type="button">Favoriten</button>
+              </div>
+            </div>
+            <div id="map" class="map-canvas"></div>
+          </div>
+
+          <aside class="detail-panel board-frame">
+            <div class="panel-head">
+              <div>
+                <span class="section-label">Station</span>
+                <h3 id="stationName">Noch keine Auswahl</h3>
+              </div>
+              <button id="btnFavorite" class="chip-btn" type="button">☆ Favorit</button>
+            </div>
+            <div class="detail-meta" id="stationAddress">Klicke auf einen Marker oder eine Zeile.</div>
+            <div class="detail-badges">
+              <span id="stationSignal" class="signal-badge">—</span>
+              <span id="stationOpen" class="signal-badge">—</span>
+              <span id="stationDistance" class="signal-badge">—</span>
+            </div>
+            <div class="action-row">
+              <button id="btnMaps" class="secondary-btn" type="button">In Karten-App öffnen</button>
+              <button id="btnCopy" class="secondary-btn" type="button">Link kopieren</button>
+            </div>
+            <div class="history-box">
+              <div class="panel-head tight">
+                <h4>Preisverlauf</h4>
+                <div class="range-tabs" id="historyTabs">
+                  <button data-range="24h" class="tab-btn active" type="button">24h</button>
+                  <button data-range="7d" class="tab-btn" type="button">7d</button>
+                  <button data-range="30d" class="tab-btn" type="button">30d</button>
+                  <button data-range="90d" class="tab-btn" type="button">90d</button>
+                  <button data-range="1y" class="tab-btn" type="button">1y</button>
+                </div>
+              </div>
+              <canvas id="historyChart" height="180"></canvas>
+              <div class="muted small" id="historyHint">Der Verlauf erscheint nach Auswahl einer Station.</div>
+            </div>
+          </aside>
+        </section>
+
+        <section class="table-panel board-frame">
+          <div class="panel-head">
+            <div>
+              <span class="section-label">Liste</span>
+              <h3>Tankstellen im Umkreis</h3>
+            </div>
+            <div class="list-tools">
+              <button id="btnExportCsv" class="chip-btn" type="button">CSV Export</button>
+              <button id="btnRefreshList" class="chip-btn" type="button">Neu laden</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Station</th>
+                  <th>Preis</th>
+                  <th>Distanz</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="stationTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <div id="footerSource">Quelle: TankPuls · MTS-K</div>
+        <div id="rateInfo">Rate-Limit: —</div>
+      </footer>
+    </div>
+  </body>
+</html>

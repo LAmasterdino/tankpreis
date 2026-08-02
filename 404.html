@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0; url=./" />
+    <title>Weiterleitung…</title>
+    <script>
+      const path = location.pathname.replace(/\/404\.html$/, "/").replace(/\/[^/]*$/, "/");
+      const url = new URL(location.href);
+      url.pathname = path;
+      location.replace(url.toString());
+    </script>
+  </head>
+  <body></body>
+</html>
